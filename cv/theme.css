@@ -1,0 +1,593 @@
+<style>
+/* ── Base layout ────────────────────────────────────────── */
+.block-container {
+    padding-top: 3rem !important;
+    padding-bottom: 2.5rem !important;
+    max-width: 1180px !important;
+}
+h1, h2, h3 {
+    letter-spacing: -0.02em !important;
+    color: #0f172a !important;
+}
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    border-right: 1px solid #e2e8f0 !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 12px !important;
+    border-color: #e2e8f0 !important;
+    background: #ffffff !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.stTabs [data-baseweb="tab-list"] {
+    gap: 6px;
+    background-color: #f8fafc;
+    padding: 6px 8px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+}
+.stTabs [data-baseweb="tab"] {
+    border-radius: 8px !important;
+    padding: 8px 16px !important;
+}
+[data-testid="stSidebar"] fieldset[data-testid="stRadio"] { width: 100%; }
+[data-testid="stSidebar"] fieldset[data-testid="stRadio"] label { font-weight: 500; }
+
+/* ── Patient lookup — row cards ─────────────────────────── */
+/* Active patient: HTML-rendered highlighted card */
+.cv-patient-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+    margin-bottom: 6px;
+    transition: border-color 0.15s;
+}
+.cv-patient-row--active {
+    border-color: #3b82f6 !important;
+    background: #eff6ff !important;
+}
+.cv-pr-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #0f172a;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cv-pr-meta {
+    font-size: 0.8rem;
+    color: #64748b;
+    white-space: nowrap;
+}
+.cv-pr-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+.cv-badge-active { background: #dcfce7; color: #166534; }
+.cv-badge-done   { background: #f1f5f9; color: #64748b; }
+
+/* Inactive patient cards: bordered container with a name-button inside.
+   The button is styled to look like a label (no pill/border/background),
+   so the container itself feels like the clickable card. */
+div[data-testid="stVerticalBlockBorderWrapper"] button[kind="secondary"] {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    text-align: left !important;
+    font-size: 0.95rem !important;
+    font-weight: 600 !important;
+    color: #0f172a !important;
+    padding: 4px 2px 0 !important;
+    width: 100% !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"] button[kind="secondary"]:hover {
+    background: transparent !important;
+    color: #2563eb !important;
+    text-decoration: underline !important;
+}
+/* Pointer cursor on the whole card */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(button[kind="secondary"]) {
+    cursor: pointer;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(button[kind="secondary"]):hover {
+    border-color: #93c5fd !important;
+    background: #f8faff !important;
+}
+
+/* ── Patient info grid ───────────────────────────────────── */
+.cv-panel {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    background: #fff;
+    margin-bottom: 0.75rem;
+}
+.cv-section-title {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-bottom: 0.8rem;
+}
+.cv-info-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px 12px;
+}
+@media (max-width: 700px) {
+    .cv-info-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.cv-info-label {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+    margin-bottom: 3px;
+}
+.cv-info-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #0f172a;
+    line-height: 1.3;
+}
+
+/* ── Sessions panel (inside lookup) ─────────────────────── */
+.cv-sessions-col-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 0.5rem;
+}
+
+/* ── Viewer — session cards ──────────────────────────────── */
+.cv-viewer-shell {
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: #fff;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+}
+.cv-viewer-patient {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #0f172a;
+    padding: 0.85rem 1.25rem;
+    margin: 0;
+    border-bottom: 1px solid #f1f5f9;
+    background: linear-gradient(90deg, #f8fafc, #fff);
+}
+.cv-viewer-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    padding: 1rem 1.25rem;
+}
+@media (max-width: 900px) {
+    .cv-viewer-grid { grid-template-columns: 1fr; }
+}
+.cv-card-title {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 8px;
+}
+.cv-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 14px;
+    background: #fff;
+    margin-bottom: 8px;
+}
+.cv-card.cv-post-active {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.25);
+    background: #f0f7ff;
+}
+.cv-card-date {
+    font-size: 0.97rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+.cv-card-mod  { font-size: 0.82rem; color: #475569; margin-top: 3px; }
+.cv-card-tag  {
+    display: inline-block;
+    margin-top: 7px;
+    font-size: 0.76rem;
+    color: #334155;
+    background: #f1f5f9;
+    padding: 0.18rem 0.5rem;
+    border-radius: 6px;
+}
+.cv-post-stack { display: flex; flex-direction: column; }
+
+/* ── Viewer — metric strip ───────────────────────────────── */
+.cv-metric-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0.5rem 0 0.25rem 0;
+}
+.cv-metric-pill {
+    flex: 1;
+    min-width: 118px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: #fff;
+}
+.cv-m-label {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #64748b;
+}
+.cv-m-val {
+    font-size: 0.97rem;
+    font-weight: 600;
+    color: #0f172a;
+    margin-top: 4px;
+}
+.cv-interval-caption { font-size: 0.82rem; color: #64748b; margin: 0.25rem 0 0.75rem 0; }
+
+/* ── Viewer — tools chip row ─────────────────────────────── */
+.cv-tools-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0.5rem 0 0.25rem 0; }
+.cv-tools-row span {
+    font-size: 0.78rem;
+    color: #475569;
+    padding: 6px 10px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+}
+
+/* ── Session cards (lookup page) ─────────────────────────── */
+.cv-session-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 14px;
+    background: #fff;
+    margin-bottom: 6px;
+    transition: border-color 0.15s;
+}
+.cv-session-card--selected {
+    border-color: #3b82f6;
+    background: #eff6ff;
+}
+.cv-session-card--selected .cv-card-date { color: #1d4ed8; }
+.cv-session-card--selected .cv-card-mod  { color: #3b82f6; }
+/* Tuck the "Select" button tight against the card above it */
+[data-testid="stButton"] > button[kind="secondary"] {
+    font-size: 0.78rem;
+    padding: 0.25rem 0.75rem;
+    margin-top: -2px;
+}
+
+/* ── Empty state on right detail panel ───────────────────── */
+.cv-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 260px;
+    color: #94a3b8;
+    font-size: 0.9rem;
+    text-align: center;
+    gap: 8px;
+}
+
+/* ── Viewer: unified header bar ──────────────────────────── */
+.cv-viewer-header {
+    display: flex;
+    align-items: center;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: linear-gradient(90deg, #f8fafc 0%, #ffffff 100%);
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+.cv-vh-patient {
+    flex: 1;
+    font-size: 1.08rem;
+    font-weight: 700;
+    color: #0f172a;
+    padding: 0.85rem 1.25rem;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.cv-vh-mrn {
+    font-size: 0.82rem;
+    font-weight: 400;
+    color: #64748b;
+    margin-left: 8px;
+}
+/* Segmented control in viewer — slightly bolder appearance */
+[data-testid="stSegmentedControl"] {
+    background: #f1f5f9;
+    border-radius: 10px;
+    padding: 4px;
+}
+
+/* ── Viewer: session summary (two selected sessions) ─────── */
+.cv-session-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 0.75rem;
+}
+@media (max-width: 700px) { .cv-session-summary { grid-template-columns: 1fr; } }
+.cv-ss-col-title {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-bottom: 6px;
+}
+
+/* ── Viewer: overlay strip ───────────────────────────────── */
+.cv-overlay-strip {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    margin-bottom: 0.75rem;
+}
+.cv-ov-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-right: 4px;
+}
+.cv-ov-chip {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    padding: 4px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.cv-ov-sep { flex: 1; }
+.cv-ov-opacity {
+    font-size: 0.78rem;
+    color: #94a3b8;
+}
+.cv-ov-badge {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #94a3b8;
+    background: #f1f5f9;
+    border-radius: 20px;
+    padding: 2px 8px;
+}
+
+/* ── Viewer: image area placeholder ─────────────────────── */
+.cv-img-placeholder {
+    border: 2px dashed #e2e8f0;
+    border-radius: 12px;
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #94a3b8;
+    font-size: 0.88rem;
+    text-align: center;
+    padding: 2rem;
+    background: #fafafa;
+}
+.cv-img-placeholder-icon { font-size: 2.2rem; line-height: 1; }
+
+/* ── Upload zones (Google Drive style) ──────────────────── */
+.cv-upload-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.cv-upload-icon {
+    font-size: 1.6rem;
+    line-height: 1;
+}
+.cv-upload-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+.cv-upload-subtitle {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 1px;
+}
+.cv-upload-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #166534;
+    background: #dcfce7;
+    border-radius: 20px;
+    padding: 3px 10px;
+    margin-top: 6px;
+}
+/* Make the Streamlit dropzone taller and more prominent */
+[data-testid="stFileUploaderDropzone"] {
+    min-height: 140px !important;
+    border: 2px dashed #cbd5e1 !important;
+    border-radius: 12px !important;
+    background: #fafafa !important;
+    transition: border-color 0.2s, background 0.2s !important;
+    cursor: pointer !important;
+}
+[data-testid="stFileUploaderDropzone"]:hover {
+    border-color: #3b82f6 !important;
+    background: #eff6ff !important;
+}
+/* Hide the default "Limit 200MB per file" helper text — it's medical images, not helpful */
+[data-testid="stFileUploaderDropzoneInstructions"] small { display: none !important; }
+
+/* ── Placeholder panels ──────────────────────────────────── */
+.cv-placeholder {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.1rem 1.25rem;
+    margin-top: 0.25rem;
+}
+
+/* ── Page header ─────────────────────────────────────── */
+.cv-page-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.2;
+    margin-bottom: 0.1rem;
+}
+.cv-page-title .cv-green { color: #22c55e; }
+.cv-page-badge {
+    font-size: 0.73rem;
+    color: #3b82f6;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 20px;
+    padding: 3px 11px;
+    white-space: nowrap;
+}
+
+/* ── Breadcrumb ──────────────────────────────────────── */
+.cv-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    margin-bottom: 0.5rem;
+}
+.cv-breadcrumb-link { color: #64748b; font-weight: 500; }
+.cv-breadcrumb-sep  { color: #cbd5e1; }
+.cv-breadcrumb-page { color: #475569; font-weight: 500; }
+
+/* ── Patient list: avatar circles ────────────────────── */
+.cv-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #dde6ef;
+    color: #3b5168;
+    font-size: 0.7rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    letter-spacing: 0.03em;
+    margin-top: 4px;
+}
+
+/* ── Patient list: scan count + last scan date ────────── */
+.cv-scan-count {
+    font-size: 0.78rem;
+    color: #475569;
+    font-weight: 500;
+    text-align: right;
+    line-height: 1.4;
+    padding-top: 6px;
+}
+.cv-scan-last {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    text-align: right;
+    line-height: 1.4;
+}
+
+/* ── Patient detail: two-section info card ───────────── */
+.cv-info-two-section {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+    padding: 1rem 1.15rem 1.15rem;
+}
+.cv-info-section-hdr {
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin: 0.9rem 0 0.45rem 0;
+}
+.cv-info-section-hdr:first-child { margin-top: 0; }
+.cv-info-kv-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 5px 0;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 0.86rem;
+}
+.cv-info-kv-row:last-child { border-bottom: none; }
+.cv-info-kv-key { color: #64748b; }
+.cv-info-kv-val { font-weight: 600; color: #0f172a; text-align: right; max-width: 62%; }
+
+/* ── Sessions detail: section subheaders ─────────────── */
+.cv-ses-subhdr {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin: 1rem 0 0.4rem 0;
+}
+
+/* ── Sessions detail: radio rows (main content only) ─── */
+section[data-testid="stMain"] [data-testid="stRadio"] label:has(input) {
+    display: flex !important;
+    align-items: center !important;
+    padding: 10px 14px !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    margin-bottom: 6px !important;
+    cursor: pointer !important;
+    transition: background 0.15s, border-color 0.15s !important;
+    font-size: 0.88rem !important;
+    gap: 8px !important;
+    line-height: 1.35 !important;
+}
+section[data-testid="stMain"] [data-testid="stRadio"] label:has(input):hover {
+    background: #f8fafc !important;
+    border-color: #bfdbfe !important;
+}
+section[data-testid="stMain"] [data-testid="stRadio"] label:has(input):has(input:checked) {
+    background: #eff6ff !important;
+    border-color: #3b82f6 !important;
+}
+/* Tighten gap between stacked radio options */
+section[data-testid="stMain"] [data-testid="stRadio"] [data-testid="stVerticalBlock"] {
+    gap: 0 !important;
+}
+</style>
