@@ -1,9 +1,24 @@
-"""Demo registry and pure lookup helpers (no Streamlit)."""
+"""Patient data repository and lookup helpers."""
 
+import json
+from pathlib import Path
 from typing import Tuple
+
+import pandas as pd
 
 from cv.constants import DEFAULT_MODALITY, STATUS_ACTIVE
 from cv.models import ImagingSession, PatientRecord
+
+REQUIRED_CHONDRAL_QUANT_COLUMNS: tuple[str, ...] = (
+    "session_id",
+    "date",
+    "segment",
+    "volume",
+    "thickness",
+    "t2_relaxation",
+)
+FOLLOWUP_LABEL_6_MONTHS = "6 mo follow-up"
+DEFAULT_PATIENT_STORE_PATH = Path(__file__).resolve().parent.parent / "data" / "patients.json"
 
 MOCK_PATIENTS: Tuple[PatientRecord, ...] = (
     PatientRecord(
@@ -38,7 +53,7 @@ MOCK_PATIENTS: Tuple[PatientRecord, ...] = (
         status=STATUS_ACTIVE,
         sessions=(
             ImagingSession("s-002-pre", "pre", "15 Jun 2023", DEFAULT_MODALITY, "Baseline"),
-            ImagingSession("s-002-post-6m", "post", "28 Dec 2023", DEFAULT_MODALITY, "6 mo follow-up"),
+            ImagingSession("s-002-post-6m", "post", "28 Dec 2023", DEFAULT_MODALITY, FOLLOWUP_LABEL_6_MONTHS),
             ImagingSession("s-002-post-14m", "followup", "28 Aug 2024", DEFAULT_MODALITY, "14 mo follow-up"),
         ),
     ),
@@ -56,7 +71,7 @@ MOCK_PATIENTS: Tuple[PatientRecord, ...] = (
         status=STATUS_ACTIVE,
         sessions=(
             ImagingSession("s-003-pre", "pre", "05 Mar 2024", DEFAULT_MODALITY, "Baseline"),
-            ImagingSession("s-003-post-6m", "post", "05 Sep 2024", DEFAULT_MODALITY, "6 mo follow-up"),
+            ImagingSession("s-003-post-6m", "post", "05 Sep 2024", DEFAULT_MODALITY, FOLLOWUP_LABEL_6_MONTHS),
         ),
     ),
     PatientRecord(
@@ -73,7 +88,7 @@ MOCK_PATIENTS: Tuple[PatientRecord, ...] = (
         status=STATUS_ACTIVE,
         sessions=(
             ImagingSession("s-004-pre", "pre", "10 Jan 2024", DEFAULT_MODALITY, "Baseline"),
-            ImagingSession("s-004-post-6m", "post", "10 Jul 2024", DEFAULT_MODALITY, "6 mo follow-up"),
+            ImagingSession("s-004-post-6m", "post", "10 Jul 2024", DEFAULT_MODALITY, FOLLOWUP_LABEL_6_MONTHS),
             ImagingSession("s-004-post-9m", "followup", "10 Oct 2024", DEFAULT_MODALITY, "9 mo follow-up"),
         ),
     ),
@@ -96,11 +111,108 @@ MOCK_PATIENTS: Tuple[PatientRecord, ...] = (
 )
 
 
+def _session_to_dict(session: ImagingSession) -> dict[str, str]:
+    """Serialize one imaging session to a JSON-compatible dict."""
+    return {
+        "session_id": session.session_id,
+        "role": session.role,
+        "date": session.date,
+        "modality": session.modality,
+        "label": session.label,
+    }
+
+
+def _patient_to_dict(patient: PatientRecord) -> dict[str, object]:
+    """Serialize one patient record to a JSON-compatible dict."""
+    return {
+        "patient_id": patient.patient_id,
+        "display_name": patient.display_name,
+        "mrn": patient.mrn,
+        "dob": patient.dob,
+        "age": patient.age,
+        "sex": patient.sex,
+        "joint": patient.joint,
+        "treating": patient.treating,
+        "treatment_type": patient.treatment_type,
+        "treatment_started": patient.treatment_started,
+        "status": patient.status,
+        "sessions": [_session_to_dict(session) for session in patient.sessions],
+    }
+
+
+def _session_from_dict(raw: dict[str, object]) -> ImagingSession:
+    """Parse one imaging session from persisted JSON."""
+    return ImagingSession(
+        session_id=str(raw["session_id"]),
+        role=str(raw["role"]),  # type: ignore[arg-type]
+        date=str(raw["date"]),
+        modality=str(raw["modality"]),
+        label=str(raw["label"]),
+    )
+
+
+def _patient_from_dict(raw: dict[str, object]) -> PatientRecord:
+    """Parse one patient record from persisted JSON."""
+    sessions_raw = raw.get("sessions", [])
+    sessions = tuple(_session_from_dict(item) for item in sessions_raw if isinstance(item, dict))
+    return PatientRecord(
+        patient_id=str(raw["patient_id"]),
+        display_name=str(raw["display_name"]),
+        mrn=str(raw["mrn"]),
+        dob=str(raw["dob"]),
+        age=int(raw["age"]),
+        sex=str(raw["sex"]),
+        joint=str(raw["joint"]),
+        treating=str(raw["treating"]),
+        treatment_type=str(raw["treatment_type"]),
+        treatment_started=str(raw["treatment_started"]),
+        status=str(raw["status"]),
+        sessions=sessions,
+    )
+
+
+class PatientRepository:
+    """File-backed patient repository with demo seed fallback."""
+
+    def __init__(self, storage_path: Path = DEFAULT_PATIENT_STORE_PATH) -> None:
+        self.storage_path = storage_path
+
+    def _ensure_seed_data(self) -> None:
+        """Seed storage with demo records when file does not exist."""
+        if self.storage_path.exists():
+            return
+        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"patients": [_patient_to_dict(patient) for patient in MOCK_PATIENTS]}
+        self.storage_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def load_patients(self) -> Tuple[PatientRecord, ...]:
+        """Load all patients from storage."""
+        self._ensure_seed_data()
+        raw_payload = json.loads(self.storage_path.read_text(encoding="utf-8"))
+        patients_raw = raw_payload.get("patients", [])
+        patients = [_patient_from_dict(item) for item in patients_raw if isinstance(item, dict)]
+        return tuple(patients)
+
+    def save_patients(self, patients: Tuple[PatientRecord, ...]) -> None:
+        """Persist patient list to storage."""
+        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"patients": [_patient_to_dict(patient) for patient in patients]}
+        self.storage_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+_patient_repository = PatientRepository()
+
+
+def list_patients() -> Tuple[PatientRecord, ...]:
+    """Return all patients from repository."""
+    return _patient_repository.load_patients()
+
+
 def find_patients(query: str, joint_filter: str = "All") -> Tuple[PatientRecord, ...]:
     """Case-insensitive filter on name, MRN, or id, with optional joint type filter."""
     q = query.strip().lower()
     results: list[PatientRecord] = []
-    for p in MOCK_PATIENTS:
+    for p in list_patients():
         if q and q not in p.display_name.lower() and q not in p.mrn.lower() and q not in p.patient_id.lower():
             continue
         if joint_filter != "All" and joint_filter.lower() not in p.joint.lower():
@@ -129,7 +241,29 @@ def session_radio_label(session: ImagingSession) -> str:
 
 def get_patient_by_id(patient_id: str) -> PatientRecord | None:
     """Return a demo patient by id, or None if unknown."""
-    for p in MOCK_PATIENTS:
+    for p in list_patients():
         if p.patient_id == patient_id:
             return p
     return None
+
+
+def load_chondral_quant_csv(csv_file: str) -> pd.DataFrame:
+    """Load and validate Chondral Quant-style CSV metrics."""
+    data_frame = pd.read_csv(csv_file)
+    normalized_columns = [column.strip().lower() for column in data_frame.columns]
+    data_frame.columns = normalized_columns
+
+    missing_columns = [column for column in REQUIRED_CHONDRAL_QUANT_COLUMNS if column not in data_frame.columns]
+    if missing_columns:
+        raise ValueError(
+            "CSV missing required columns: "
+            + ", ".join(missing_columns)
+        )
+
+    numeric_columns = ["volume", "thickness", "t2_relaxation"]
+    for column_name in numeric_columns:
+        data_frame[column_name] = pd.to_numeric(data_frame[column_name], errors="coerce")
+    if data_frame[numeric_columns].isna().any().any():
+        raise ValueError("CSV contains non-numeric values in volume, thickness, or t2_relaxation.")
+
+    return data_frame

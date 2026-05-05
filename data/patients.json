@@ -1,0 +1,163 @@
+{
+  "patients": [
+    {
+      "patient_id": "pt-001",
+      "display_name": "Tan Wei Ming",
+      "mrn": "048291",
+      "dob": "12 Mar 1978",
+      "age": 47,
+      "sex": "M",
+      "joint": "Right knee",
+      "treating": "Dr Lim Siew Hua",
+      "treatment_type": "MACI",
+      "treatment_started": "Feb 2024",
+      "status": "Active follow-up",
+      "sessions": [
+        {
+          "session_id": "s-001-pre",
+          "role": "pre",
+          "date": "14 Jan 2024",
+          "modality": "MRI 3T DESS",
+          "label": "Baseline"
+        },
+        {
+          "session_id": "s-001-post-9m",
+          "role": "post",
+          "date": "18 Oct 2024",
+          "modality": "MRI 3T DESS",
+          "label": "9 mo follow-up"
+        },
+        {
+          "session_id": "s-001-post-14m",
+          "role": "followup",
+          "date": "03 Mar 2025",
+          "modality": "MRI 3T DESS",
+          "label": "14 mo follow-up"
+        }
+      ]
+    },
+    {
+      "patient_id": "pt-002",
+      "display_name": "Priya Nair",
+      "mrn": "081482",
+      "dob": "22 Aug 1982",
+      "age": 43,
+      "sex": "F",
+      "joint": "Left hip",
+      "treating": "Dr Ong Boon Kheng",
+      "treatment_type": "Hip resurfacing",
+      "treatment_started": "Jun 2023",
+      "status": "Active follow-up",
+      "sessions": [
+        {
+          "session_id": "s-002-pre",
+          "role": "pre",
+          "date": "15 Jun 2023",
+          "modality": "MRI 3T DESS",
+          "label": "Baseline"
+        },
+        {
+          "session_id": "s-002-post-6m",
+          "role": "post",
+          "date": "28 Dec 2023",
+          "modality": "MRI 3T DESS",
+          "label": "6 mo follow-up"
+        },
+        {
+          "session_id": "s-002-post-14m",
+          "role": "followup",
+          "date": "28 Aug 2024",
+          "modality": "MRI 3T DESS",
+          "label": "14 mo follow-up"
+        }
+      ]
+    },
+    {
+      "patient_id": "pt-003",
+      "display_name": "Ahmad Razif",
+      "mrn": "073519",
+      "dob": "10 Sep 1990",
+      "age": 35,
+      "sex": "M",
+      "joint": "Right shoulder",
+      "treating": "Dr Tan Soo Kee",
+      "treatment_type": "Rotator cuff repair",
+      "treatment_started": "Mar 2024",
+      "status": "Active follow-up",
+      "sessions": [
+        {
+          "session_id": "s-003-pre",
+          "role": "pre",
+          "date": "05 Mar 2024",
+          "modality": "MRI 3T DESS",
+          "label": "Baseline"
+        },
+        {
+          "session_id": "s-003-post-6m",
+          "role": "post",
+          "date": "05 Sep 2024",
+          "modality": "MRI 3T DESS",
+          "label": "6 mo follow-up"
+        }
+      ]
+    },
+    {
+      "patient_id": "pt-004",
+      "display_name": "Siti Rahimah",
+      "mrn": "082740",
+      "dob": "03 Dec 1975",
+      "age": 50,
+      "sex": "F",
+      "joint": "Left knee",
+      "treating": "Dr Lim Siew Hua",
+      "treatment_type": "MACI",
+      "treatment_started": "Jan 2024",
+      "status": "Active follow-up",
+      "sessions": [
+        {
+          "session_id": "s-004-pre",
+          "role": "pre",
+          "date": "10 Jan 2024",
+          "modality": "MRI 3T DESS",
+          "label": "Baseline"
+        },
+        {
+          "session_id": "s-004-post-6m",
+          "role": "post",
+          "date": "10 Jul 2024",
+          "modality": "MRI 3T DESS",
+          "label": "6 mo follow-up"
+        },
+        {
+          "session_id": "s-004-post-9m",
+          "role": "followup",
+          "date": "10 Oct 2024",
+          "modality": "MRI 3T DESS",
+          "label": "9 mo follow-up"
+        }
+      ]
+    },
+    {
+      "patient_id": "pt-005",
+      "display_name": "Lee Chong Wei",
+      "mrn": "094321",
+      "dob": "21 Jan 1998",
+      "age": 28,
+      "sex": "M",
+      "joint": "Right ankle",
+      "treating": "Dr Rajesh Kumar",
+      "treatment_type": "Ankle arthroscopy",
+      "treatment_started": "Nov 2024",
+      "status": "Active follow-up",
+      "sessions": [
+        {
+          "session_id": "s-005-pre",
+          "role": "pre",
+          "date": "08 Jan 2025",
+          "modality": "MRI 3T DESS",
+          "label": "Baseline"
+        }
+      ]
+    }
+  ]
+}

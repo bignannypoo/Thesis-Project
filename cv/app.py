@@ -3,7 +3,7 @@
 import streamlit as st
 
 from cv.constants import SCREEN_LOOKUP, SCREEN_VIEWER
-from cv.data import MOCK_PATIENTS, get_patient_by_id
+from cv.data import get_patient_by_id, list_patients
 from cv.lookup_ui import render_patient_lookup_screen
 from cv.session_sync import resolve_pre_post_sessions
 from cv.styles import inject_custom_css
@@ -20,8 +20,13 @@ def run() -> None:
 
     inject_custom_css()
 
+    patients = list_patients()
+    if not patients:
+        st.error("No patients available in backend storage.")
+        st.stop()
+
     if "cv_selected_patient" not in st.session_state:
-        st.session_state.cv_selected_patient = MOCK_PATIENTS[0].patient_id
+        st.session_state.cv_selected_patient = patients[0].patient_id
     if "cv_screen" not in st.session_state:
         st.session_state.cv_screen = SCREEN_LOOKUP
     if "cv_lookup_mode" not in st.session_state:
