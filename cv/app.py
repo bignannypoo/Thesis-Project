@@ -1,13 +1,78 @@
-"""Streamlit entry: page config, theme, session defaults, sidebar, routing."""
+"""Streamlit entry: unified dashboard with persistent sidebar patient search."""
 
 import streamlit as st
 
-from cv.constants import SCREEN_LOOKUP, SCREEN_VIEWER
-from cv.data import get_patient_by_id, list_patients
-from cv.lookup_ui import render_patient_lookup_screen
-from cv.session_sync import resolve_pre_post_sessions
+from cv.constants import JOINT_FILTER_OPTIONS, STATUS_ACTIVE
+from cv.data import (
+    compute_initials,
+    find_patients,
+    get_patient_by_id,
+    list_patients,
+)
+from cv.html_util import escape_html
 from cv.styles import inject_custom_css
 from cv.viewer_ui import render_viewer_screen
+
+
+def render_sidebar_patient_search() -> None:
+    """Compact patient search in sidebar."""
+    st.markdown("### 🦵 CartiView")
+    st.caption("Pre & post cartilage comparison")
+    st.divider()
+
+    # Search input
+    search_query = st.text_input(
+        "Search patients",
+        placeholder="Name or MRN...",
+        key="sidebar_search",
+        label_visibility="collapsed",
+    )
+
+    # Joint filter
+    joint_filter = st.segmented_control(
+        "Joint",
+        options=JOINT_FILTER_OPTIONS,
+        default="All",
+        key="sidebar_joint_filter",
+        label_visibility="collapsed",
+    )
+
+    st.divider()
+
+    # Find matching patients
+    matches = find_patients(search_query, joint_filter)
+
+    if not matches:
+        st.warning("No patients found")
+        return
+
+    st.caption(f"{len(matches)} patient{'s' if len(matches) != 1 else ''}")
+
+    # Render compact patient list
+    for patient in matches:
+        initials = compute_initials(patient.display_name)
+        is_selected = st.session_state.cv_selected_patient == patient.patient_id
+
+        # Highlight selected patient
+        container_class = "🔹 " if is_selected else ""
+
+        with st.container():
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                st.markdown(
+                    f'<div class="cv-avatar-small">{escape_html(initials)}</div>',
+                    unsafe_allow_html=True,
+                )
+            with col2:
+                if st.button(
+                    f"{container_class}{patient.display_name}",
+                    key=f"sb_sel_{patient.patient_id}",
+                    use_container_width=True,
+                    type="primary" if is_selected else "secondary",
+                ):
+                    st.session_state.cv_selected_patient = patient.patient_id
+                    st.rerun()
+                st.caption(f"MRN {patient.mrn} · {patient.joint}")
 
 
 def run() -> None:
@@ -25,50 +90,13 @@ def run() -> None:
         st.error("No patients available in backend storage.")
         st.stop()
 
+    # Initialize session state
     if "cv_selected_patient" not in st.session_state:
         st.session_state.cv_selected_patient = patients[0].patient_id
-    if "cv_screen" not in st.session_state:
-        st.session_state.cv_screen = SCREEN_LOOKUP
-    if "cv_lookup_mode" not in st.session_state:
-        st.session_state.cv_lookup_mode = "list"
 
+    # Sidebar with patient search
     with st.sidebar:
-        st.markdown("### CartiView")
-        st.caption("Pre & post cartilage comparison · prototype")
-        st.divider()
-
-        st.markdown("##### Navigate")
-        st.radio(
-            "Screen",
-            [SCREEN_LOOKUP, SCREEN_VIEWER],
-            key="cv_screen",
-            label_visibility="collapsed",
-        )
-        st.divider()
-
-        sidebar_patient = get_patient_by_id(st.session_state.cv_selected_patient)
-        if sidebar_patient:
-            st.caption("Active patient")
-            st.markdown(f"**{sidebar_patient.display_name}**")
-            st.caption(f"MRN {sidebar_patient.mrn} · {sidebar_patient.joint}")
-
-            if st.session_state.cv_screen == SCREEN_VIEWER:
-                try:
-                    pre, post = resolve_pre_post_sessions(sidebar_patient)
-                    st.divider()
-                    st.caption("Comparing")
-                    st.markdown(
-                        f"**Pre** {pre.date}  \n{pre.label}  \n"
-                        f"**Post** {post.date}  \n{post.label}"
-                    )
-                    st.button(
-                        "Change sessions ↩",
-                        use_container_width=True,
-                        on_click=lambda: st.session_state.__setitem__("cv_screen", SCREEN_LOOKUP),
-                        key="sb_change_sessions",
-                    )
-                except (KeyError, StopIteration):
-                    pass
+        render_sidebar_patient_search()
 
         st.divider()
         st.link_button(
@@ -77,12 +105,10 @@ def run() -> None:
             use_container_width=True,
         )
 
-    active = get_patient_by_id(st.session_state.cv_selected_patient)
-    if active is None:
+    # Main area - always show viewer
+    active_patient = get_patient_by_id(st.session_state.cv_selected_patient)
+    if active_patient is None:
         st.error("Invalid patient selection.")
         st.stop()
 
-    if st.session_state.cv_screen == SCREEN_LOOKUP:
-        render_patient_lookup_screen()
-    else:
-        render_viewer_screen(active)
+    render_viewer_screen(active_patient)

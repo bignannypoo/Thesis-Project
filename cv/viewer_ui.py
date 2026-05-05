@@ -276,30 +276,21 @@ def _build_trend_chart_png(trends_data_frame: pd.DataFrame) -> bytes | None:
 
 
 def render_viewer_header(patient: PatientRecord) -> None:
-    """Back button + patient identity bar."""
-    btn_col, bar_col = st.columns([1, 5])
-    with btn_col:
-        st.button(
-            "← Back",
-            key="vh_back",
-            use_container_width=True,
-            on_click=lambda: st.session_state.__setitem__("cv_screen", SCREEN_LOOKUP),
-        )
-    with bar_col:
-        status_badge = (
-            '<span class="cv-pr-badge cv-badge-active" style="margin-left:10px;">Active follow-up</span>'
-            if patient.status == STATUS_ACTIVE
-            else f'<span class="cv-pr-badge cv-badge-done" style="margin-left:10px;">{escape_html(patient.status)}</span>'
-        )
-        st.markdown(
-            f'<div class="cv-viewer-header">'
-            f'<div class="cv-vh-patient">'
-            f"{escape_html(patient.display_name)}"
-            f'<span class="cv-vh-mrn">MRN {escape_html(patient.mrn)} · {escape_html(patient.joint)}</span>'
-            f"{status_badge}"
-            f"</div></div>",
-            unsafe_allow_html=True,
-        )
+    """Patient identity bar."""
+    status_badge = (
+        '<span class="cv-pr-badge cv-badge-active" style="margin-left:10px;">Active follow-up</span>'
+        if patient.status == STATUS_ACTIVE
+        else f'<span class="cv-pr-badge cv-badge-done" style="margin-left:10px;">{escape_html(patient.status)}</span>'
+    )
+    st.markdown(
+        f'<div class="cv-viewer-header">'
+        f'<div class="cv-vh-patient">'
+        f"{escape_html(patient.display_name)}"
+        f'<span class="cv-vh-mrn">MRN {escape_html(patient.mrn)} · {escape_html(patient.joint)}</span>'
+        f"{status_badge}"
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
 
 
 def render_viewer_session_summary(
@@ -1092,11 +1083,35 @@ def render_image_viewer_area(view_mode: str) -> tuple[list, list]:
     return pre_list, post_list
 
 
+def render_metrics_dashboard(pre_session: ImagingSession, post_session: ImagingSession) -> None:
+    """Prominent metrics dashboard showing key changes."""
+    metrics = get_segment_metrics_for_post_session(post_session.session_id)
+    if not metrics:
+        return
+
+    st.markdown("### Key Changes")
+    cols = st.columns(4)
+
+    metric_data = [
+        ("Volume Change", metrics.total_volume, "🔵"),
+        ("Medial Thickness", metrics.medial_thickness, "🟢"),
+        ("Lateral Thickness", metrics.lateral_thickness, "🟡"),
+        ("T2 Relaxation", metrics.t2_relaxation, "🔴"),
+    ]
+
+    for col, (label, value, icon) in zip(cols, metric_data):
+        with col:
+            st.metric(label=f"{icon} {label}", value=value)
+
+    st.divider()
+
+
 def render_viewer_screen(patient: PatientRecord) -> None:
     """Full viewer pipeline."""
     pre_session, post_session = resolve_pre_post_sessions(patient)
 
     render_viewer_header(patient)
+    render_metrics_dashboard(pre_session, post_session)
 
     mode_col, change_col = st.columns([5, 1])
     with mode_col:

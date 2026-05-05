@@ -13,6 +13,23 @@ h1, h2, h3 {
     background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
     border-right: 1px solid #e2e8f0 !important;
 }
+/* Sidebar buttons for patient selection */
+[data-testid="stSidebar"] button[kind="primary"],
+[data-testid="stSidebar"] button[kind="secondary"] {
+    font-size: 0.85rem !important;
+    padding: 6px 10px !important;
+    border-radius: 8px !important;
+    text-align: left !important;
+}
+[data-testid="stSidebar"] button[kind="primary"] {
+    background: #3b82f6 !important;
+    border-color: #3b82f6 !important;
+}
+/* Sidebar text input styling */
+[data-testid="stSidebar"] input[type="text"] {
+    font-size: 0.85rem !important;
+    border-radius: 8px !important;
+}
 div[data-testid="stVerticalBlockBorderWrapper"] {
     border-radius: 12px !important;
     border-color: #e2e8f0 !important;
@@ -508,6 +525,23 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(button[kind="secondary"]):ho
     flex-shrink: 0;
     letter-spacing: 0.03em;
     margin-top: 4px;
+}
+
+/* ── Sidebar: compact avatar for patient search ────── */
+.cv-avatar-small {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #dde6ef;
+    color: #3b5168;
+    font-size: 0.65rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    letter-spacing: 0.03em;
+    margin-top: 2px;
 }
 
 /* ── Patient list: scan count + last scan date ────────── */
