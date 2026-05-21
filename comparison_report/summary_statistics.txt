@@ -1,0 +1,14 @@
+MRChondralHealth Pre/Post Comparison Summary
+===========================================
+Pre folder:  /Users/raytan/Desktop/Thesis Project/tests/fixtures/mrch_pre
+Pre source:  csv
+Pre datetime: 2024-01-14 10:30:00
+Post folder: /Users/raytan/Desktop/Thesis Project/tests/fixtures/mrch_post
+Post source: csv
+Post datetime: 2024-10-18 14:00:00
+
+Region/layer rows: 4
+Mean volume % change: 1.6666666666666776
+Mean T2 (bioch mean) delta (ms): -4.5
+T2 improved regions (lower T2): 1
+T2 deteriorated regions: 0

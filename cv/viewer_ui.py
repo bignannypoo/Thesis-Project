@@ -1085,7 +1085,7 @@ def render_image_viewer_area(view_mode: str) -> tuple[list, list]:
 
 def render_metrics_dashboard(pre_session: ImagingSession, post_session: ImagingSession) -> None:
     """Prominent metrics dashboard showing key changes."""
-    metrics = get_segment_metrics_for_post_session(post_session.session_id)
+    metrics = get_segment_metrics_for_post_session(post_session)
     if not metrics:
         return
 

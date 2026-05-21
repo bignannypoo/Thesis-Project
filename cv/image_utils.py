@@ -378,6 +378,10 @@ def render_image_load_section() -> tuple[List[ImageSource], List[ImageSource]]:
         "Supported formats: image files + DICOM (`.dcm`). "
         "Files are paired in order — 1st pre with 1st post, 2nd with 2nd, etc."
     )
+    st.info(
+        "Only scan images belong here (`png/jpg/jpeg/webp/tif/tiff/bmp/dcm`). "
+        "Use **Trends** for metrics `.csv`, and **Tools** for `.pdf`, `.u3d`, and `.stl` files."
+    )
     with st.expander("⚙️ DICOM display controls"):
         st.caption("Use manual window/level for better soft-tissue or bone contrast.")
         selected_preset = st.selectbox(

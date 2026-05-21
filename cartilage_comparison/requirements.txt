@@ -1,11 +1,11 @@
 streamlit>=1.32,<2
-matplotlib>=3.8,<4
-Pillow>=10,<12
 pandas>=2.0,<4
-plotly>=5.0,<6
+numpy>=2.0,<3
+matplotlib>=3.8,<4
 reportlab>=4.0,<5
+nibabel>=5.0,<6
+plotly>=5.0,<6
 trimesh>=4.0,<5
-pydicom>=2.4,<3
-scipy>=1.11,<2
 pypdf>=5.0,<6
+Pillow>=10,<12
 pytest>=8,<9
