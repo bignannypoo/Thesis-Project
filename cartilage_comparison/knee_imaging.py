@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Iterable, Literal
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -16,6 +16,18 @@ from PIL import Image
 
 SliceAxis = Literal["axial", "coronal", "sagittal"]
 DifferenceView = Literal["clinical_panel", "overlay", "change_only"]
+
+# MRCH NIfTI axis order: UI "axial" / "coronal" are swapped vs naive array indices.
+_SLICE_AXIS_DIMENSION: dict[SliceAxis, int] = {
+    "axial": 1,
+    "coronal": 2,
+    "sagittal": 0,
+}
+_COUNT_AXES_FOR_DIMENSION: dict[int, tuple[int, int]] = {
+    0: (1, 2),
+    1: (0, 2),
+    2: (0, 1),
+}
 
 COLOR_INCREASE = np.array([0.1, 0.75, 0.2])  # green
 COLOR_DECREASE = np.array([0.9, 0.15, 0.15])  # red
@@ -56,25 +68,29 @@ def load_nifti_volume(path: str | Path) -> np.ndarray:
     return np.asarray(nib.load(str(path)).get_fdata(), dtype=np.float32)
 
 
+def slice_axis_length(volume: np.ndarray, axis: SliceAxis) -> int:
+    """Number of slices available along the chosen anatomical axis."""
+    dimension = _SLICE_AXIS_DIMENSION[axis]
+    return int(volume.shape[dimension])
+
+
 def extract_slice(volume: np.ndarray, axis: SliceAxis, index: int) -> np.ndarray:
     """Return a 2D slice from a 3D volume."""
-    if axis == "axial":
-        return volume[:, :, index]
-    if axis == "coronal":
+    dimension = _SLICE_AXIS_DIMENSION[axis]
+    if dimension == 0:
+        return volume[index, :, :]
+    if dimension == 1:
         return volume[:, index, :]
-    return volume[index, :, :]
+    return volume[:, :, index]
 
 
 def default_slice_index(volume: np.ndarray, axis: SliceAxis) -> int:
     """Pick the slice with the most non-zero voxels (cartilage present)."""
-    if axis == "axial":
-        counts = np.count_nonzero(volume, axis=(0, 1))
-    elif axis == "coronal":
-        counts = np.count_nonzero(volume, axis=(0, 2))
-    else:
-        counts = np.count_nonzero(volume, axis=(1, 2))
+    dimension = _SLICE_AXIS_DIMENSION[axis]
+    count_axes = _COUNT_AXES_FOR_DIMENSION[dimension]
+    counts = np.count_nonzero(volume, axis=count_axes)
     if counts.max() == 0:
-        return volume.shape[{"axial": 2, "coronal": 1, "sagittal": 0}[axis]] // 2
+        return slice_axis_length(volume, axis) // 2
     return int(np.argmax(counts))
 
 
@@ -229,26 +245,162 @@ def _decode_thickness_mm(values: np.ndarray) -> np.ndarray:
     return decoded
 
 
-def prepare_slice_delta(
+MAX_REGISTRATION_SHIFT_PX = 24
+REGISTRATION_SMOOTH_WINDOW = 5
+
+
+@dataclass(frozen=True)
+class SliceRegistration:
+    """2D integer shift that moves pre cartilage toward post on one slice."""
+
+    row_shift: int
+    col_shift: int
+    overlap_pixels: int
+
+
+def find_mask_registration_shift(
+    pre_slice: np.ndarray,
+    post_slice: np.ndarray,
+    *,
+    max_shift: int = MAX_REGISTRATION_SHIFT_PX,
+) -> SliceRegistration:
+    """Find the shift that maximizes cartilage mask overlap (search all slices)."""
+    from scipy.ndimage import shift as nd_shift
+
+    pre_mask = (pre_slice > 0).astype(np.float32)
+    post_mask = (post_slice > 0).astype(np.float32)
+    if not pre_mask.any() or not post_mask.any():
+        return SliceRegistration(0, 0, 0)
+
+    def _score_shift(row_shift: int, col_shift: int) -> float:
+        moved = nd_shift(pre_mask, (row_shift, col_shift), order=0, mode="constant")
+        return float((moved * post_mask).sum())
+
+    best_row = 0
+    best_col = 0
+    best_overlap = _score_shift(0, 0)
+    for row_shift in range(-max_shift, max_shift + 1, 2):
+        for col_shift in range(-max_shift, max_shift + 1, 2):
+            overlap = _score_shift(row_shift, col_shift)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_row = row_shift
+                best_col = col_shift
+
+    for row_shift in range(best_row - 2, best_row + 3):
+        for col_shift in range(best_col - 2, best_col + 3):
+            overlap = _score_shift(row_shift, col_shift)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_row = row_shift
+                best_col = col_shift
+
+    return SliceRegistration(best_row, best_col, int(best_overlap))
+
+
+def _smooth_shift_series(shifts: np.ndarray, valid: np.ndarray, window: int) -> np.ndarray:
+    """Median-smooth shifts along the slice stack; fill empty slices from neighbors."""
+    filled = shifts.astype(np.float64, copy=True)
+    if not valid.any():
+        return filled
+
+    last_valid = 0.0
+    for index, is_valid in enumerate(valid):
+        if is_valid:
+            last_valid = filled[index]
+        else:
+            filled[index] = last_valid
+
+    if window <= 1:
+        return filled
+
+    from scipy.ndimage import median_filter
+
+    return median_filter(filled, size=window, mode="nearest")
+
+
+def compute_volume_registration(
     pre_volume: np.ndarray,
     post_volume: np.ndarray,
+    axis: SliceAxis,
     *,
-    axis: SliceAxis = "axial",
-    slice_index: int,
     decode_thickness: bool = False,
-    threshold: float = 0.05,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, SliceChangeStats]:
-    """Return pre/post slices, delta, tissue mask, and change statistics."""
-    pre_slice = extract_slice(pre_volume, axis, slice_index).astype(np.float32)
-    post_slice = extract_slice(post_volume, axis, slice_index).astype(np.float32)
+    max_shift: int = MAX_REGISTRATION_SHIFT_PX,
+    smooth_window: int = REGISTRATION_SMOOTH_WINDOW,
+) -> list[SliceRegistration]:
+    """
+    Register pre→post for every slice along *axis*, then smooth shifts for consistency.
 
-    if decode_thickness:
-        pre_slice = _decode_thickness_mm(pre_slice)
-        post_slice = _decode_thickness_mm(post_slice)
-        unit_label = "mm"
-    else:
-        unit_label = "region label"
+    Produces stack-wide alignment similar to a manual “good” overlay on all slices.
+    """
+    slice_count = slice_axis_length(pre_volume, axis)
+    row_shifts = np.zeros(slice_count, dtype=np.float64)
+    col_shifts = np.zeros(slice_count, dtype=np.float64)
+    overlaps = np.zeros(slice_count, dtype=np.int64)
+    valid = np.zeros(slice_count, dtype=bool)
 
+    for slice_index in range(slice_count):
+        pre_slice = extract_slice(pre_volume, axis, slice_index).astype(np.float32)
+        post_slice = extract_slice(post_volume, axis, slice_index).astype(np.float32)
+        if decode_thickness:
+            pre_slice = _decode_thickness_mm(pre_slice)
+            post_slice = _decode_thickness_mm(post_slice)
+
+        registration = find_mask_registration_shift(
+            pre_slice,
+            post_slice,
+            max_shift=max_shift,
+        )
+        row_shifts[slice_index] = registration.row_shift
+        col_shifts[slice_index] = registration.col_shift
+        overlaps[slice_index] = registration.overlap_pixels
+        valid[slice_index] = registration.overlap_pixels > 0
+
+    row_shifts = _smooth_shift_series(row_shifts, valid, smooth_window)
+    col_shifts = _smooth_shift_series(col_shifts, valid, smooth_window)
+
+    return [
+        SliceRegistration(
+            int(round(row_shifts[index])),
+            int(round(col_shifts[index])),
+            int(overlaps[index]),
+        )
+        for index in range(slice_count)
+    ]
+
+
+def align_pre_slice_to_post(
+    pre_slice: np.ndarray,
+    post_slice: np.ndarray,
+    registration: SliceRegistration | None = None,
+) -> np.ndarray:
+    """Shift pre toward post using per-slice registration (mask overlap)."""
+    from scipy.ndimage import shift
+
+    if registration is None:
+        registration = find_mask_registration_shift(pre_slice, post_slice)
+
+    if registration.row_shift == 0 and registration.col_shift == 0:
+        return pre_slice
+
+    return shift(
+        pre_slice,
+        (registration.row_shift, registration.col_shift),
+        order=0,
+        mode="constant",
+        cval=0.0,
+    )
+
+
+def _slice_change_stats(
+    pre_slice: np.ndarray,
+    post_slice: np.ndarray,
+    *,
+    threshold: float,
+    decode_thickness: bool,
+    unit_label: str,
+) -> tuple[np.ndarray, np.ndarray, SliceChangeStats]:
+    """Build delta, tissue mask, and stats for one pre/post slice pair."""
     tissue_mask = (pre_slice > 0) | (post_slice > 0)
     delta = np.zeros_like(post_slice)
     delta[tissue_mask] = post_slice[tissue_mask] - pre_slice[tissue_mask]
@@ -272,6 +424,46 @@ def prepare_slice_delta(
         mean_delta=float(delta[tissue_mask].mean()) if tissue_count else 0.0,
         max_increase=float(delta[increased].max()) if increased.any() else 0.0,
         max_decrease=float(delta[decreased].min()) if decreased.any() else 0.0,
+        unit_label=unit_label,
+    )
+    return delta, tissue_mask, stats
+
+
+def prepare_slice_delta(
+    pre_volume: np.ndarray,
+    post_volume: np.ndarray,
+    *,
+    axis: SliceAxis = "axial",
+    slice_index: int,
+    decode_thickness: bool = False,
+    threshold: float = 0.05,
+    align_pre_to_post: bool = False,
+    registration: SliceRegistration | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, SliceChangeStats]:
+    """Return pre/post slices, delta, tissue mask, and change statistics."""
+    pre_slice = extract_slice(pre_volume, axis, slice_index).astype(np.float32)
+    post_slice = extract_slice(post_volume, axis, slice_index).astype(np.float32)
+
+    if decode_thickness:
+        pre_slice = _decode_thickness_mm(pre_slice)
+        post_slice = _decode_thickness_mm(post_slice)
+        unit_label = "mm"
+    else:
+        unit_label = "region label"
+
+    if align_pre_to_post:
+        pre_for_delta = align_pre_slice_to_post(
+            pre_slice,
+            post_slice,
+            registration=registration,
+        )
+    else:
+        pre_for_delta = pre_slice
+    delta, tissue_mask, stats = _slice_change_stats(
+        pre_for_delta,
+        post_slice,
+        threshold=threshold,
+        decode_thickness=decode_thickness,
         unit_label=unit_label,
     )
     return pre_slice, post_slice, delta, tissue_mask, stats
@@ -325,42 +517,94 @@ def _delta_masks(
     return increased, decreased
 
 
+def _draw_aligned_cartilage_contours(
+    axis_plot,
+    post_slice: np.ndarray,
+    pre_aligned: np.ndarray,
+) -> None:
+    """Overlay post (green) and aligned pre (red) outlines on the same slice."""
+    post_mask = post_slice > 0
+    pre_mask = pre_aligned > 0
+    if post_mask.any():
+        axis_plot.contour(
+            post_mask.astype(float),
+            levels=[0.5],
+            colors=[COLOR_INCREASE],
+            linewidths=1.6,
+            origin="lower",
+        )
+    if pre_mask.any():
+        axis_plot.contour(
+            pre_mask.astype(float),
+            levels=[0.5],
+            colors=[COLOR_DECREASE],
+            linewidths=1.6,
+            origin="lower",
+        )
+
+
+def _render_change_overlay_on_axis(
+    axis_plot,
+    post_slice: np.ndarray,
+    pre_slice: np.ndarray,
+    *,
+    threshold: float,
+    decode_thickness: bool,
+    unit_label: str = "mm",
+    registration: SliceRegistration | None = None,
+) -> SliceChangeStats:
+    """Grey post scan with aligned pre (red) and post (green) cartilage contours."""
+    pre_aligned = align_pre_slice_to_post(
+        pre_slice,
+        post_slice,
+        registration=registration,
+    )
+    delta, tissue_mask, stats = _slice_change_stats(
+        pre_aligned,
+        post_slice,
+        threshold=threshold,
+        decode_thickness=decode_thickness,
+        unit_label=unit_label,
+    )
+
+    base = post_slice.astype(np.float32, copy=True)
+    vmax = float(np.percentile(base[tissue_mask], 99)) if tissue_mask.any() else 1.0
+    if vmax <= 0:
+        vmax = 1.0
+    axis_plot.imshow(base, cmap="gray", origin="lower", vmin=0, vmax=vmax)
+    _draw_aligned_cartilage_contours(axis_plot, post_slice, pre_aligned)
+    return stats
+
+
 def build_change_only_figure(
     pre_slice: np.ndarray,
     post_slice: np.ndarray,
-    delta: np.ndarray,
-    tissue_mask: np.ndarray,
     *,
     threshold: float,
     title: str,
     decode_thickness: bool,
-    stats: SliceChangeStats | None = None,
-) -> Figure:
-    """High-contrast change map: only green/red on cartilage (easiest to read)."""
-    increased, decreased = _delta_masks(
-        delta, tissue_mask, threshold=threshold, decode_thickness=decode_thickness,
-        pre_slice=pre_slice, post_slice=post_slice,
-    )
-
+    unit_label: str = "mm",
+    registration: SliceRegistration | None = None,
+) -> tuple[Figure, SliceChangeStats]:
+    """Change map: green/red overlaid together on the post scan (pre aligned to post)."""
     figure, axis_plot = plt.subplots(figsize=(6, 6), facecolor="black")
     axis_plot.set_facecolor("black")
-    canvas = np.zeros((*delta.shape, 3), dtype=float)
-    canvas[tissue_mask] = [0.15, 0.15, 0.15]
-    canvas[increased] = COLOR_INCREASE
-    canvas[decreased] = COLOR_DECREASE
-    axis_plot.imshow(canvas, origin="lower", interpolation="nearest")
-
-    for mask, color in ((increased, COLOR_INCREASE), (decreased, COLOR_DECREASE)):
-        if mask.any():
-            axis_plot.contour(mask.astype(float), levels=[0.5], colors=[color], linewidths=1.2)
+    stats = _render_change_overlay_on_axis(
+        axis_plot,
+        post_slice,
+        pre_slice,
+        threshold=threshold,
+        decode_thickness=decode_thickness,
+        unit_label=unit_label,
+        registration=registration,
+    )
 
     axis_plot.set_title(title, color="white", fontsize=11, pad=10)
     axis_plot.axis("off")
 
     legend_items = [
-        mpatches.Patch(color=COLOR_INCREASE, label="Increase (post > pre)"),
-        mpatches.Patch(color=COLOR_DECREASE, label="Decrease (post < pre)"),
-        mpatches.Patch(color=(0.15, 0.15, 0.15), label="No change on slice"),
+        mpatches.Patch(color=COLOR_INCREASE, label="Post (later) outline"),
+        mpatches.Patch(color=COLOR_DECREASE, label="Pre (earlier) outline, aligned"),
     ]
     axis_plot.legend(
         handles=legend_items,
@@ -370,19 +614,18 @@ def build_change_only_figure(
         fontsize=8,
     )
 
-    if stats is not None:
-        summary = (
-            f"On this slice: {stats.increased_percent:.0f}% increased · "
-            f"{stats.decreased_percent:.0f}% decreased · "
-            f"mean Δ {stats.mean_delta:+.2f} {stats.unit_label}"
-        )
-        axis_plot.text(
-            0.5, 1.02, summary, transform=axis_plot.transAxes, ha="center", va="bottom",
-            fontsize=8, color="white",
-        )
+    summary = (
+        f"On this slice: {stats.increased_percent:.0f}% increased · "
+        f"{stats.decreased_percent:.0f}% decreased · "
+        f"mean Δ {stats.mean_delta:+.2f} {stats.unit_label}"
+    )
+    axis_plot.text(
+        0.5, 1.02, summary, transform=axis_plot.transAxes, ha="center", va="bottom",
+        fontsize=8, color="white",
+    )
 
     figure.tight_layout()
-    return figure
+    return figure, stats
 
 
 def build_slice_change_heatmap_figure(
@@ -395,8 +638,9 @@ def build_slice_change_heatmap_figure(
     title: str = "Change map (overlay on post)",
     decode_thickness: bool = False,
     stats: SliceChangeStats | None = None,
+    registration: SliceRegistration | None = None,
 ) -> Figure:
-    """Overlay red/green change on the post (later) scan."""
+    """Aligned pre/post cartilage outlines on the post (later) scan."""
     if pre_volume.shape != post_volume.shape:
         raise ValueError(
             f"Volume shapes must match for heatmap (got {pre_volume.shape} vs {post_volume.shape})"
@@ -405,35 +649,35 @@ def build_slice_change_heatmap_figure(
     if slice_index is None:
         slice_index = default_slice_index(post_volume, axis)
 
-    pre_slice, post_slice, delta, tissue_mask, computed_stats = prepare_slice_delta(
-        pre_volume, post_volume, axis=axis, slice_index=slice_index,
-        decode_thickness=decode_thickness, threshold=threshold,
+    pre_slice, post_slice, _, _, computed_stats = prepare_slice_delta(
+        pre_volume,
+        post_volume,
+        axis=axis,
+        slice_index=slice_index,
+        decode_thickness=decode_thickness,
+        threshold=threshold,
+        align_pre_to_post=True,
+        registration=registration,
     )
     stats = stats or computed_stats
 
-    base = post_slice.copy()
-    vmax = float(np.percentile(base[tissue_mask], 99)) if tissue_mask.any() else 1.0
-    if vmax <= 0:
-        vmax = 1.0
-
     figure, axis_plot = plt.subplots(figsize=(6, 6))
-    axis_plot.imshow(base, cmap="gray", origin="lower", vmin=0, vmax=vmax)
-
-    increased, decreased = _delta_masks(
-        delta, tissue_mask, threshold=threshold, decode_thickness=decode_thickness,
-        pre_slice=pre_slice, post_slice=post_slice,
+    _render_change_overlay_on_axis(
+        axis_plot,
+        post_slice,
+        pre_slice,
+        threshold=threshold,
+        decode_thickness=decode_thickness,
+        unit_label=stats.unit_label,
+        registration=registration,
     )
-    overlay = np.zeros((*delta.shape, 4), dtype=float)
-    overlay[increased] = [*COLOR_INCREASE, 0.85]
-    overlay[decreased] = [*COLOR_DECREASE, 0.85]
-    axis_plot.imshow(overlay, origin="lower")
 
     axis_plot.set_title(title, fontsize=11)
     axis_plot.axis("off")
     axis_plot.legend(
         handles=[
-            mpatches.Patch(color=COLOR_INCREASE, label="Increase"),
-            mpatches.Patch(color=COLOR_DECREASE, label="Decrease"),
+            mpatches.Patch(color=COLOR_INCREASE, label="Post outline"),
+            mpatches.Patch(color=COLOR_DECREASE, label="Pre outline (aligned)"),
         ],
         loc="lower center",
         fontsize=8,
@@ -452,14 +696,22 @@ def build_clinical_comparison_figure(
     slice_index: int,
     threshold: float = 0.05,
     decode_thickness: bool = False,
+    registration: SliceRegistration | None = None,
 ) -> tuple[Figure, SliceChangeStats]:
     """
     Three-panel layout: Pre | Post | Change map — intended for clinical review.
     """
-    pre_slice, post_slice, delta, tissue_mask, stats = prepare_slice_delta(
-        pre_volume, post_volume, axis=axis, slice_index=slice_index,
-        decode_thickness=decode_thickness, threshold=threshold,
+    pre_slice, post_slice, _, _, stats = prepare_slice_delta(
+        pre_volume,
+        post_volume,
+        axis=axis,
+        slice_index=slice_index,
+        decode_thickness=decode_thickness,
+        threshold=threshold,
+        align_pre_to_post=True,
+        registration=registration,
     )
+    unit_label = stats.unit_label
 
     figure, axes = plt.subplots(1, 3, figsize=(14, 5))
     figure.patch.set_facecolor("#f8fafc")
@@ -478,29 +730,42 @@ def build_clinical_comparison_figure(
             spine.set_linewidth(3)
 
     change_axis = axes[2]
-    increased, decreased = _delta_masks(
-        delta, tissue_mask, threshold=threshold, decode_thickness=decode_thickness,
-        pre_slice=pre_slice, post_slice=post_slice,
+    _render_change_overlay_on_axis(
+        change_axis,
+        post_slice,
+        pre_slice,
+        threshold=threshold,
+        decode_thickness=decode_thickness,
+        unit_label=unit_label,
+        registration=registration,
     )
-    canvas = np.ones((*delta.shape, 3), dtype=float)
-    canvas[tissue_mask] = 0.92
-    canvas[increased] = COLOR_INCREASE
-    canvas[decreased] = COLOR_DECREASE
-    change_axis.imshow(canvas, origin="lower", interpolation="nearest")
+    overlap_note = ""
+    if registration is not None and registration.overlap_pixels > 0:
+        overlap_note = f" · overlap {registration.overlap_pixels:,} px"
     change_axis.set_title(
-        "WHAT CHANGED\n(green = more · red = less)",
+        "WHAT CHANGED\n(green = post · red = pre, aligned)",
         fontsize=10,
         fontweight="bold",
     )
     change_axis.axis("off")
     change_axis.legend(
         handles=[
-            mpatches.Patch(color=COLOR_INCREASE, label=f"Increase ({stats.increased_percent:.0f}% of cartilage)"),
-            mpatches.Patch(color=COLOR_DECREASE, label=f"Decrease ({stats.decreased_percent:.0f}% of cartilage)"),
+            mpatches.Patch(color=COLOR_INCREASE, label="Post (later) outline"),
+            mpatches.Patch(color=COLOR_DECREASE, label="Pre (earlier) outline"),
         ],
         loc="lower center",
         fontsize=8,
     )
+    if registration is not None:
+        change_axis.text(
+            0.5,
+            -0.08,
+            f"Slice shift (row, col): ({registration.row_shift}, {registration.col_shift}){overlap_note}",
+            transform=change_axis.transAxes,
+            ha="center",
+            fontsize=7,
+            color="#475569",
+        )
 
     figure.suptitle(
         f"Pre vs Post · slice {slice_index} ({axis}) · "
@@ -513,20 +778,33 @@ def build_clinical_comparison_figure(
     return figure, stats
 
 
+def _iter_page_embedded_images(page: object) -> Iterable[object]:
+    """
+    Yield embedded image objects from a pypdf page.
+
+    pypdf 5+ exposes ``page.images`` as ``VirtualListImages`` (sequence), not a dict.
+    """
+    page_images = getattr(page, "images", None)
+    if not page_images:
+        return
+    if isinstance(page_images, dict):
+        yield from page_images.values()
+        return
+    yield from page_images
+
+
 def extract_pdf_diagram_images(pdf_path: str | Path, max_pages: int = 6) -> list[Image.Image]:
     """Extract embedded images from the MRCH study report PDF."""
     from pypdf import PdfReader
 
     reader = PdfReader(str(pdf_path))
     images: list[Image.Image] = []
-    for page_index, page in enumerate(reader.pages[:max_pages]):
-        for image_file in getattr(page, "images", {}).values():
+    for page in reader.pages[:max_pages]:
+        for image_file in _iter_page_embedded_images(page):
             try:
                 images.append(Image.open(io.BytesIO(image_file.data)).convert("RGB"))
             except OSError:
                 continue
-        if page_index >= max_pages:
-            break
     return images
 
 

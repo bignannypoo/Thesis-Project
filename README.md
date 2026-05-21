@@ -32,7 +32,7 @@ Alternative (same app):
 streamlit run cartilage_comparison/main.py
 ```
 
-Enter paths to two timepoint folders in the sidebar. Each folder should contain:
+In the sidebar, choose **Upload** (ZIP each timepoint folder, or select all files inside it) or **Local folder path**. Each timepoint should contain:
 
 - `*_MRCH_NOT_FOR_CLINICAL_USE.csv` (required unless only JSON exists)
 - `cartilage.statistics` (optional)

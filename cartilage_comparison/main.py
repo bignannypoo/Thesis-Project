@@ -20,6 +20,10 @@ import streamlit as st
 
 from cartilage_comparison.analysis import build_comparison_table, summarize_overall_changes
 from cartilage_comparison.data_loader import load_timepoint_folder
+from cartilage_comparison.folder_upload import (
+    count_uploaded_files,
+    resolve_uploaded_timepoint,
+)
 from cartilage_comparison.report_generator import create_pdf_report
 from cartilage_comparison.knee_views import render_knee_imaging_section
 from cartilage_comparison.visualizations import (
@@ -72,15 +76,79 @@ def run() -> None:
 
     with st.sidebar:
         st.header("Timepoints")
-        timepoint_1 = st.text_input(
-            "Timepoint 1 folder",
-            placeholder="/Users/.../MRCH_Comparison/Pre/Patient 3 pre robust",
+        source_mode = st.radio(
+            "How to load timepoints",
+            ["Upload", "Local folder path"],
+            horizontal=True,
         )
-        timepoint_2 = st.text_input(
-            "Timepoint 2 folder",
-            placeholder="/Users/.../MRCH_Comparison/Post/Patient 3 post robust",
-        )
-        st.caption("Pre scans → `Pre/... pre robust` · Post scans → `Post/... post robust`")
+
+        timepoint_1 = ""
+        timepoint_2 = ""
+
+        if source_mode == "Upload":
+            st.caption(
+                "Browsers cannot open a folder picker. Upload a **.zip** of each timepoint "
+                "(recommended), or select **all files** inside the folder (Cmd+A in the file dialog)."
+            )
+            tp1_zip = st.file_uploader(
+                "Timepoint 1 — ZIP",
+                type=["zip"],
+                key="tp1_zip_upload",
+                help="Zip the MRCH export folder (keep CSV, NIfTI, VTK, PDF inside).",
+            )
+            tp1_files = st.file_uploader(
+                "Timepoint 1 — or pick all files in folder",
+                accept_multiple_files=True,
+                key="tp1_files_upload",
+            )
+            tp1_path = resolve_uploaded_timepoint(
+                tp1_zip,
+                tp1_files,
+                cache_key="tp1_upload",
+                cached=st.session_state,
+            )
+            if tp1_path is not None:
+                timepoint_1 = str(tp1_path)
+                st.caption(f"Timepoint 1 ready: `{tp1_path.name}`")
+            elif tp1_zip or count_uploaded_files(tp1_files):
+                st.warning("Could not read Timepoint 1 upload.")
+            else:
+                st.caption("Upload Timepoint 1 (ZIP or files).")
+
+            tp2_zip = st.file_uploader(
+                "Timepoint 2 — ZIP",
+                type=["zip"],
+                key="tp2_zip_upload",
+            )
+            tp2_files = st.file_uploader(
+                "Timepoint 2 — or pick all files in folder",
+                accept_multiple_files=True,
+                key="tp2_files_upload",
+            )
+            tp2_path = resolve_uploaded_timepoint(
+                tp2_zip,
+                tp2_files,
+                cache_key="tp2_upload",
+                cached=st.session_state,
+            )
+            if tp2_path is not None:
+                timepoint_2 = str(tp2_path)
+                st.caption(f"Timepoint 2 ready: `{tp2_path.name}`")
+            elif tp2_zip or count_uploaded_files(tp2_files):
+                st.warning("Could not read Timepoint 2 upload.")
+            else:
+                st.caption("Upload Timepoint 2 (ZIP or files).")
+        else:
+            timepoint_1 = st.text_input(
+                "Timepoint 1 folder",
+                placeholder="/Users/.../MRCH_Comparison/Pre/Patient 3 pre robust",
+            )
+            timepoint_2 = st.text_input(
+                "Timepoint 2 folder",
+                placeholder="/Users/.../MRCH_Comparison/Post/Patient 3 post robust",
+            )
+            st.caption("Pre scans → `Pre/...` · Post scans → `Post/...`")
+
         prefer_json = st.checkbox("Prefer cartilage.statistics JSON", value=False)
         st.divider()
         st.header("Display")
@@ -95,7 +163,10 @@ def run() -> None:
 
     if st.button("Run comparison", type="primary"):
         if not timepoint_1.strip() or not timepoint_2.strip():
-            st.error("Enter both timepoint folder paths.")
+            if source_mode == "Upload":
+                st.error("Upload both timepoints (ZIP or all files in each folder).")
+            else:
+                st.error("Enter both timepoint folder paths.")
             st.stop()
         try:
             tp1 = load_timepoint_folder(timepoint_1, prefer_json=prefer_json)
@@ -115,7 +186,7 @@ def run() -> None:
 
     table = st.session_state.get("comparison_table")
     if table is None:
-        st.info("Enter folder paths and click **Run comparison**.")
+        st.info("Load both timepoints in the sidebar, then click **Run comparison**.")
         return
 
     tp1 = st.session_state.get("timepoint_1")

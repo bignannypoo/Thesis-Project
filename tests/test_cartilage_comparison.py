@@ -1,5 +1,8 @@
 """Tests for the standalone cartilage_comparison package."""
 
+import io
+import shutil
+import zipfile
 from pathlib import Path
 
 import matplotlib
@@ -20,12 +23,54 @@ from cartilage_comparison.data_loader import (
     load_timepoint_data,
     load_timepoint_folder,
 )
+from cartilage_comparison.folder_upload import materialize_files_upload, materialize_zip_upload
 from cartilage_comparison.regions import filter_comparison_by_layer, parse_cartilage_region, pivot_change_matrix
 from cartilage_comparison.visualizations import build_dashboard_summary, create_change_heatmap, figure_to_png_bytes
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 TIMEPOINT_1 = FIXTURES_DIR / "mrch_pre"
 TIMEPOINT_2 = FIXTURES_DIR / "mrch_post"
+
+
+class _BytesUpload:
+    def __init__(self, name: str, data: bytes) -> None:
+        self.name = name
+        self._data = data
+
+    def getvalue(self) -> bytes:
+        return self._data
+
+
+def _zip_fixture_folder(folder: Path) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in folder.rglob("*"):
+            if path.is_file():
+                archive.write(path, path.relative_to(folder).as_posix())
+    return buffer.getvalue()
+
+
+def test_materialize_zip_upload_loads_timepoint() -> None:
+    temp_dir = materialize_zip_upload(_zip_fixture_folder(TIMEPOINT_1))
+    try:
+        data = load_timepoint_folder(temp_dir)
+        assert data.study_datetime == "2024-01-14 10:30:00"
+    finally:
+        shutil.rmtree(temp_dir.parent, ignore_errors=True)
+
+
+def test_materialize_files_upload_loads_timepoint() -> None:
+    uploads = [
+        _BytesUpload(path.relative_to(TIMEPOINT_1).as_posix(), path.read_bytes())
+        for path in TIMEPOINT_1.rglob("*")
+        if path.is_file()
+    ]
+    temp_dir = materialize_files_upload(uploads)
+    try:
+        data = load_timepoint_folder(temp_dir)
+        assert data.study_datetime == "2024-01-14 10:30:00"
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def test_extract_study_datetime_from_filename() -> None:

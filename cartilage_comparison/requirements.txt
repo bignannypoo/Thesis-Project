@@ -6,6 +6,7 @@ reportlab>=4.0,<5
 nibabel>=5.0,<6
 plotly>=5.0,<6
 trimesh>=4.0,<5
+scipy>=1.11,<2
 pypdf>=5.0,<6
 Pillow>=10,<12
 pytest>=8,<9
