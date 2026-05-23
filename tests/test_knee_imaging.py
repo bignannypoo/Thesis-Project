@@ -11,12 +11,13 @@ import pytest
 
 from cartilage_comparison.asset_discovery import discover_timepoint_assets
 from cartilage_comparison.knee_imaging import (
-    _iter_page_embedded_images,
+    _parse_study_report_text,
     align_pre_slice_to_post,
     build_slice_change_heatmap_figure,
     compute_volume_registration,
     default_slice_index,
     extract_slice,
+    extract_study_report_metadata,
     find_mask_registration_shift,
     load_vtk_surface_mesh,
     slice_axis_length,
@@ -27,27 +28,36 @@ PATIENT_PRE = Path("/Users/raytan/Desktop/MRCH_Comparison/Pre/Patient 3 pre robu
 PATIENT_POST = Path("/Users/raytan/Desktop/MRCH_Comparison/Post/Patient 3 post robust")
 
 
-class _FakeImageFile:
-    def __init__(self, data: bytes) -> None:
-        self.data = data
+SAMPLE_REPORT_HEADER = """
+MR ChondralHealth Case Report
+Laterality:Left(Set from DICOM) (3D)
+MagneticFieldStrength:1.5T
+Created: 2026-05-07 09:09:00
+MR ChondralHealth Version:  4.2.1 (2025-08-14)
+Segmentation Type: Conventional
+Registration Type: UOQ
+Case Comments
+None.
+"""
 
 
-class _FakeVirtualListImages(list):
-    """Mimics pypdf 5 ``VirtualListImages`` (sequence without ``.values()``)."""
+def test_parse_study_report_text_extracts_header_fields() -> None:
+    fields = _parse_study_report_text(SAMPLE_REPORT_HEADER)
+    assert fields["laterality"] == "Left"
+    assert fields["created"] == "2026-05-07 09:09:00"
+    assert fields["segmentation_type"] == "Conventional"
+    assert fields["registration_type"] == "UOQ"
+    assert fields["field_strength"] == "1.5T"
+    assert fields["case_comments"] is None
 
 
-def test_iter_page_embedded_images_supports_virtual_list() -> None:
-    class _Page:
-        images = _FakeVirtualListImages([_FakeImageFile(b"\x00")])
-
-    assert len(list(_iter_page_embedded_images(_Page()))) == 1
-
-
-def test_iter_page_embedded_images_supports_dict() -> None:
-    class _Page:
-        images = {"img0": _FakeImageFile(b"\x01")}
-
-    assert len(list(_iter_page_embedded_images(_Page()))) == 1
+@pytest.mark.skipif(not PATIENT_PRE.is_dir(), reason="Patient 3 pre folder not on machine")
+def test_extract_study_report_metadata_patient3() -> None:
+    pdf_path = next(PATIENT_PRE.glob("*_StudyReport.pdf"))
+    metadata = extract_study_report_metadata(pdf_path)
+    assert metadata.page_count >= 1
+    assert metadata.laterality in {"Left", "Right"}
+    assert metadata.segmentation_type is not None
 
 
 def test_find_mask_registration_shift_moves_pre_to_post() -> None:

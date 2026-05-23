@@ -52,7 +52,7 @@ Legacy flags `--pre` / `--post` still work.
 
 In the Streamlit app, open the **Knee imaging** tab after running a comparison:
 
-- Study report PDF diagrams (embedded images)
+- Study report PDF metadata (MRCH exports are tables, not knee images)
 - NIfTI slice viewer with red/green change overlay on cartilage
 - 3D `segmentation_mesh.vtk` surface overlay (pre vs post)
 - Optional STL file paths (MRCH folders usually do not include STL; export separately)

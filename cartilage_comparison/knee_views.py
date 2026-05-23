@@ -18,7 +18,7 @@ from cartilage_comparison.knee_imaging import (
     build_slice_change_heatmap_figure,
     compute_volume_registration,
     default_slice_index,
-    extract_pdf_diagram_images,
+    extract_study_report_metadata,
     format_timepoint_caption,
     load_nifti_volume,
     load_stl_mesh,
@@ -114,12 +114,9 @@ def render_knee_imaging_section(tp1: TimepointData, tp2: TimepointData) -> None:
         st.error(str(error))
         return
 
-    tab_pdf, tab_nifti, tab_mesh, tab_stl = st.tabs(
-        ["Study report diagrams", "MRI volume slices", "3D surface mesh", "STL (optional)"],
+    tab_nifti, tab_mesh, tab_report, tab_stl = st.tabs(
+        ["MRI volume slices", "3D surface mesh", "Study report", "STL (optional)"],
     )
-
-    with tab_pdf:
-        _render_pdf_tab(assets_1, assets_2, tp1, tp2)
 
     with tab_nifti:
         _render_nifti_tab(assets_1, assets_2, tp1, tp2)
@@ -127,11 +124,28 @@ def render_knee_imaging_section(tp1: TimepointData, tp2: TimepointData) -> None:
     with tab_mesh:
         _render_vtk_tab(assets_1, assets_2, tp1, tp2)
 
+    with tab_report:
+        _render_study_report_tab(assets_1, assets_2, tp1, tp2)
+
     with tab_stl:
         _render_stl_tab(assets_1, assets_2, tp1, tp2)
 
 
-def _render_pdf_tab(
+def _metadata_rows(metadata) -> list[tuple[str, str]]:
+    """Turn study report metadata into label/value rows for display."""
+    return [
+        ("Created", metadata.created or "—"),
+        ("Laterality", metadata.laterality or "—"),
+        ("Field strength", metadata.field_strength or "—"),
+        ("Segmentation", metadata.segmentation_type or "—"),
+        ("Registration", metadata.registration_type or "—"),
+        ("Software version", metadata.software_version or "—"),
+        ("Pages", str(metadata.page_count)),
+        ("Case comments", metadata.case_comments or "—"),
+    ]
+
+
+def _render_study_report_tab(
     assets_1: TimepointAssets,
     assets_2: TimepointAssets,
     tp1: TimepointData,
@@ -140,6 +154,13 @@ def _render_pdf_tab(
     if assets_1.study_report_pdf is None and assets_2.study_report_pdf is None:
         st.warning("No *_StudyReport.pdf found in either folder.")
         return
+
+    st.info(
+        "MRChondralHealth study reports are **PDF tables and metadata**, not knee images. "
+        "Embedded graphics are usually Siemens branding only. "
+        "Use **MRI volume slices** for visual pre/post comparison; regional metrics are in the "
+        "**Comparison table** tab (from the MRCH CSV)."
+    )
 
     col1, col2 = st.columns(2)
     for column, assets, tp, role in (
@@ -152,15 +173,22 @@ def _render_pdf_tab(
                 st.info("No study report PDF.")
                 continue
             try:
-                images = extract_pdf_diagram_images(assets.study_report_pdf)
+                metadata = extract_study_report_metadata(assets.study_report_pdf)
             except Exception as error:
                 st.error(f"Could not read PDF: {error}")
                 continue
-            if not images:
-                st.info("No embedded images in PDF.")
-                continue
-            for index, image in enumerate(images[:4]):
-                st.image(image, caption=f"{role} — diagram {index + 1}", use_container_width=True)
+
+            for label, value in _metadata_rows(metadata):
+                st.markdown(f"**{label}:** {value}")
+
+            pdf_bytes = assets.study_report_pdf.read_bytes()
+            st.download_button(
+                label=f"Download {assets.study_report_pdf.name}",
+                data=pdf_bytes,
+                file_name=assets.study_report_pdf.name,
+                mime="application/pdf",
+                key=f"download_study_report_{role}",
+            )
 
 
 def _render_nifti_tab(

@@ -1,18 +1,17 @@
-"""2D/3D knee visuals: NIfTI slices, VTK/STL meshes, PDF diagrams, change heatmaps."""
+"""2D/3D knee visuals: NIfTI slices, VTK/STL meshes, study report metadata, change heatmaps."""
 
 from __future__ import annotations
 
-import io
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Literal
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.figure import Figure
 import numpy as np
-from PIL import Image
 
 SliceAxis = Literal["axial", "coronal", "sagittal"]
 DifferenceView = Literal["clinical_panel", "overlay", "change_only"]
@@ -778,51 +777,69 @@ def build_clinical_comparison_figure(
     return figure, stats
 
 
-def _iter_page_embedded_images(page: object) -> Iterable[object]:
+@dataclass(frozen=True)
+class StudyReportMetadata:
+    """Key fields from the MRChondralHealth study report PDF (page 1)."""
+
+    pdf_path: Path
+    page_count: int
+    laterality: str | None
+    created: str | None
+    software_version: str | None
+    segmentation_type: str | None
+    registration_type: str | None
+    field_strength: str | None
+    case_comments: str | None
+
+
+def _parse_study_report_text(text: str) -> dict[str, str | None]:
+    """Parse MRCH case-report header fields from extracted PDF text."""
+
+    def _match(pattern: str) -> str | None:
+        match = re.search(pattern, text, re.IGNORECASE)
+        return match.group(1).strip() if match else None
+
+    comments_match = re.search(
+        r"Case Comments\s*\n(.+?)(?:\n[A-Z][a-z]|\Z)",
+        text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    case_comments = comments_match.group(1).strip() if comments_match else None
+    if case_comments in {None, "", "None."}:
+        case_comments = None
+
+    return {
+        "laterality": _match(r"Laterality:\s*([A-Za-z]+)"),
+        "created": _match(r"Created:\s*([\d-]+(?:\s+[\d:]+)?)"),
+        "software_version": _match(r"MR ChondralHealth Version:\s*([^\n]+)"),
+        "segmentation_type": _match(r"Segmentation Type:\s*([^\n(]+)"),
+        "registration_type": _match(r"Registration Type:\s*([^\n(]+)"),
+        "field_strength": _match(r"MagneticFieldStrength:\s*([^\n(]+)"),
+        "case_comments": case_comments,
+    }
+
+
+def extract_study_report_metadata(pdf_path: str | Path) -> StudyReportMetadata:
     """
-    Yield embedded image objects from a pypdf page.
+    Extract study metadata from an MRCH ``*_StudyReport.pdf``.
 
-    pypdf 5+ exposes ``page.images`` as ``VirtualListImages`` (sequence), not a dict.
+    These PDFs are mostly tables and Siemens branding — not knee diagram images.
     """
-    page_images = getattr(page, "images", None)
-    if not page_images:
-        return
-    if isinstance(page_images, dict):
-        yield from page_images.values()
-        return
-    yield from page_images
-
-
-def extract_pdf_diagram_images(pdf_path: str | Path, max_pages: int = 6) -> list[Image.Image]:
-    """Extract embedded images from the MRCH study report PDF."""
     from pypdf import PdfReader
 
-    reader = PdfReader(str(pdf_path))
-    images: list[Image.Image] = []
-    for page in reader.pages[:max_pages]:
-        for image_file in _iter_page_embedded_images(page):
-            try:
-                images.append(Image.open(io.BytesIO(image_file.data)).convert("RGB"))
-            except OSError:
-                continue
-    return images
+    path = Path(pdf_path)
+    reader = PdfReader(str(path))
+    header_text = "".join(page.extract_text() or "" for page in reader.pages[:2])
+    fields = _parse_study_report_text(header_text)
 
-
-def build_side_by_side_pil_figure(
-    pre_image: Image.Image,
-    post_image: Image.Image,
-    *,
-    title: str = "",
-) -> Figure:
-    """Show two PIL images side by side."""
-    figure, axes = plt.subplots(1, 2, figsize=(10, 5))
-    axes[0].imshow(pre_image)
-    axes[0].set_title("Timepoint 1")
-    axes[0].axis("off")
-    axes[1].imshow(post_image)
-    axes[1].set_title("Timepoint 2")
-    axes[1].axis("off")
-    if title:
-        figure.suptitle(title)
-    figure.tight_layout()
-    return figure
+    return StudyReportMetadata(
+        pdf_path=path,
+        page_count=len(reader.pages),
+        laterality=fields["laterality"],
+        created=fields["created"],
+        software_version=fields["software_version"],
+        segmentation_type=fields["segmentation_type"],
+        registration_type=fields["registration_type"],
+        field_strength=fields["field_strength"],
+        case_comments=fields["case_comments"],
+    )
